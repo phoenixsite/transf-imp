@@ -1,16 +1,18 @@
 #!/bin/bash
 
+#set -e
 
-RESULT_DIR=../result_transfer_n100
 LOG_LEVEL=30
-BATCH_SIZE=30
+BATCH_SIZE=10
 PROGRAM=run_transferability.py
 
-for test_dir in ../result-nformula/2025-06-13/*
+RESULT_DIR=../result_transfer_nformula_pgd
+
+for test_dir in ../result-nformula/2025-11-03/*
 do
         aes_dir=$(find "$test_dir" -name "adversarial_examples" -type d)
         echo "Using $aes_dir directory"
-        for target_model in "inception_resnet_v2.tf_ens_adv_in1k" "vgg16.tv_in1k" "inception_v3.tv_in1k" "resnet50.tv2_in1k" "inception_v3.tf_adv_in1k" "vgg19.tv_in1k" "resnet152.tv2_in1k" "mobilenetv2_140.ra_in1k"
+        for target_model in "neural-representation-purifier" "resnet152.tv2_in1k"
         do
                 echo "Testing model: $target_model"
                 uv run "$PROGRAM" \
@@ -25,11 +27,13 @@ do
         done
 done
 
-for test_dir in ../result-n100/2025-06-13/*
+RESULT_DIR=../result_transfer_n100_pgd
+
+for test_dir in ../result-n100/2025-11-03/*
 do
         aes_dir=$(find "$test_dir" -name "adversarial_examples" -type d)
         echo "Using $aes_dir directory"
-        for target_model in "inception_resnet_v2.tf_ens_adv_in1k" "vgg16.tv_in1k" "inception_v3.tv_in1k" "resnet50.tv2_in1k" "inception_v3.tf_adv_in1k" "vgg19.tv_in1k" "resnet152.tv2_in1k" "mobilenetv2_140.ra_in1k"
+        for target_model in "neural-representation-purifier" "resnet152.tv2_in1k"
         do
                 echo "Testing model: $target_model"
                 uv run "$PROGRAM" \

@@ -1,2 +1,0 @@
-numpy
-robustbench @ git+https://github.com/phoenixsite/robustbench.git

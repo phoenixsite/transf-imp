@@ -1,0 +1,24 @@
+[project]
+name = "transf-imp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "adversarial-robustness-toolbox>=1.20.1",
+    "colorlog>=6.10.1",
+    "timm>=1.0.22",
+    "torch>=2.9.1",
+    "torchmetrics>=1.8.2",
+    "torchvision>=0.24.1",
+    "tqdm>=4.67.1",
+]
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = {index = "pytorch" }

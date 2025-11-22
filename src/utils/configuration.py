@@ -8,10 +8,6 @@ import sys
 import numpy as np
 import torch
 
-from .logging import setup_logger
-
-logger = setup_logger(__name__)
-
 
 def reproducibility():
     """

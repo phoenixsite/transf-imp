@@ -1,13 +1,12 @@
 import os
+import logging
 
 import torch
 import yaml
 
 from core.container import BaseDict
 
-from .logging import setup_logger
-
-logger = setup_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def read_yaml(paths):

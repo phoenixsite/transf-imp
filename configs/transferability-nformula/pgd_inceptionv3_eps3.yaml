@@ -1,0 +1,8 @@
+dataset: imagenet
+model_name: "inception_v3.tv_in1k"
+n_examples: 5000
+
+threat_model: Linf
+
+eps: 0.062745098
+max_iter: 20

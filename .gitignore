@@ -1,2 +1,9 @@
 __pycache__
 .vscode/
+.venv
+results
+data
+.env
+models
+*.pth
+.ipynb_checkpoints
