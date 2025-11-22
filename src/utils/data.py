@@ -1,3 +1,7 @@
+"""
+Data related functionalities
+"""
+
 import math
 import os
 from typing import Callable, Optional, Union, cast
