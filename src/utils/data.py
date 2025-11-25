@@ -24,6 +24,15 @@ INITIAL_TRANSFORM = transforms.Compose([
 ])
 
 class LimitedImageNet(ImageNet):
+    """
+    Subset of ImageNet that is selected by specifying the name of the
+    desried images in a text file.
+    """
+
+    @property
+    def nb_classes(self):
+        """Get the number of classes in the dataset."""
+        return 1000
 
     @staticmethod
     def make_dataset(

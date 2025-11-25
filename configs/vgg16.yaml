@@ -1,0 +1,4 @@
+threat_model: Linf
+criterion_name: cw
+model_name: vgg16.tv_in1k
+batch_size: 75

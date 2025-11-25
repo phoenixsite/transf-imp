@@ -7,3 +7,5 @@ data
 models
 *.pth
 .ipynb_checkpoints
+results/
+*.csv

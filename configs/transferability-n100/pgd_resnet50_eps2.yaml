@@ -1,8 +1,0 @@
-dataset: imagenet
-model_name: "resnet50.tv2_in1k"
-n_examples: 5000
-
-threat_model: Linf
-
-eps: 0.031372549
-max_iter: 100

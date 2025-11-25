@@ -23,6 +23,7 @@ from torchmetrics.image import (
 )
 
 from utils.data import get_preprocessing, LimitedImageNet, INITIAL_TRANSFORM
+from utils.args import positive_number
 
 def path(filename):
     """Return an absolute path to a file in the current directory."""
@@ -51,7 +52,7 @@ PARAM_ATTACKER = "attacker_name"
 PARAM_NITER = "max_iter"
 
 # Name of the directory that stores the modified images.
-IMAGES_DIR = "adversarial_examples"
+IMAGES_DIR = "adversarial_images"
 
 # Similarity metric names
 SSIM = "ssim"
@@ -88,25 +89,11 @@ CSV_ROWS = [
     "lpips_vgg_std",
     "lpips_squeeze_mean",
     "lpips_squeeze_std",
+    "dir",
 ]
 
 # Number of images in the selected subset of ImageNet
 NEXAMPLES = 5000
-
-def positive_number(string):
-    """
-    Convert a string to a positive number.
-
-    Raise an ArgumentError if ``string`` represents a negative or zero
-    number.
-    """
-
-    number = int(string)
-
-    if number <= 0:
-        raise argparse.ArgumentTypeError("it must be a positive number.")
-    return number
-
 
 def get_argparse():
     """
@@ -133,7 +120,7 @@ def get_argparse():
     )
     parser.add_argument(
         "--batch-size",
-        default=10,
+        default=1,
         type=positive_number,
         help="Number of images processed simultaneously.",
     )
@@ -143,7 +130,18 @@ def get_argparse():
         help="Path to the ImageNet dataset."
     )
     parser.add_argument(
-        "--nthreads", default=1, type=positive_number, help="Number of threads to use."
+        "--nthreads",
+        default=2, 
+        type=positive_number, 
+        help="Number of threads to be used."
+    )
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help=(
+            "If the output file exists and this options is set, then" \
+            " its contents are appended to the results."
+        )
     )
     parser.add_argument(
         "output_file",
@@ -165,6 +163,7 @@ def get_argparse():
             "\t12. Standard deviation of LPIPS (VGG)\n" \
             "\t13. Mean of LPIPS (Squeeze)\n" \
             "\t14. Standard deviation of LPIPS (Squeeze)\n" \
+            "\t15. Directory used\n" \
             "It is necessary to specify the metric with the option --metric\n" \
             "in order to calcualte its mean and standard deviation. If not,\n" \
             "a hyphen ('-') written."
@@ -223,12 +222,23 @@ if __name__ == "__main__":
 
     batch_size = args.batch_size
 
+    already_read_dirs = []
+    rows = []
+
     if args.output_file.exists():
-        raise ValueError(
-            f"The file '{args.output_file}' exists. Specifiy one that do not exists."
-        )
-    
-    visualize = True
+        if not args.append:
+            raise ValueError(
+                f"The file '{args.output_file}' exists. Specifiy one that do not exists."
+            )
+        else:
+            with open(args.output_file, "r") as file:
+                reader = csv.reader(file)
+                
+                for row in reader:
+                    already_read_dirs.append(row[-1])
+                    rows.append(row)
+    else:
+        rows.append(CSV_ROWS)
 
     metrics = []
     metrics.append((SSIM, SSIM_METRIC.to(device)))
@@ -285,7 +295,7 @@ if __name__ == "__main__":
 
             test_loader = data.DataLoader(
                 original_imagenet,
-                batch_size=NEXAMPLES,
+                batch_size=len(original_imagenet),
                 shuffle=False,
                 num_workers=args.nthreads,
             )
@@ -297,15 +307,16 @@ if __name__ == "__main__":
         else:
             full_original_images[model_name][0].append(testimagesdir)
 
-    rows = []
-    rows.append(CSV_ROWS)
-
     for model_name in full_original_images:
         for testimagesdir in tqdm(
             full_original_images[model_name][0],
             desc=f"Using data preprocessed images from {model_name}",
             unit="directories",
         ):
+            
+            if str(testimagesdir) in already_read_dirs:
+                continue
+
             original_images = full_original_images[model_name][1]
 
             run_file = Path(testimagesdir, PARAM_FILENAME)
@@ -383,11 +394,13 @@ if __name__ == "__main__":
 
                     measures.append(out.cpu())
 
-                    del mod_batch, orig_batch
-                    torch.cuda.empty_cache()
+                    if device == "cuda":
+                        del mod_batch, orig_batch
+                        torch.cuda.empty_cache()
 
                 measures = torch.cat(measures)
                 row.extend([measures.mean(dim=0).item(), measures.std(dim=0).item()])
+            row.append(testimagesdir)
             rows.append(row)
 
     with open(args.output_file, "w") as f:

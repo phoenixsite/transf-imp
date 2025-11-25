@@ -1,5 +1,6 @@
 import os
 import logging
+import pathlib
 
 import torch
 import yaml
@@ -22,7 +23,7 @@ def read_yaml(paths):
     -------
     obj: BaseDict
     """
-    if isinstance(paths, str):
+    if isinstance(paths, str) or isinstance(paths, pathlib.Path):
         paths = [paths]
 
     obj = BaseDict()

@@ -66,7 +66,7 @@ def get_configurations(args):
     d = {
         "output_dir": args.output_dir,
         "gpu_id": args.gpu,
-        "yaml_paths": args.param,
+        "yaml_paths": args.param_file,
         "cmd": cmd_argv,
         "environ_variables": dict(os.environ),
         "machine": get_machine_info()
