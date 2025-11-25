@@ -9,3 +9,12 @@ models
 .ipynb_checkpoints
 results/
 *.csv
+
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+explore_transf/*.html
+explore_transf/*.pdf
+explore_transf/data

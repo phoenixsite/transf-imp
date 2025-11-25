@@ -1,0 +1,353 @@
+---
+title: Exploración de la transferibilidad de ataques avanzados basados en el descenso del gradiente
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+  pdf_document:
+    extra_dependencies: ["float"]
+  number_sections: yes
+  fig_caption: yes
+  fig_width: 6
+  fig_asp: 0.8
+  fig_align: "center"
+---
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(fig.pos = "h", out.extra = "")
+```
+
+
+```{r}
+library(ggplot2)
+library(RColorBrewer)
+```
+
+Se preprocesa la tabla de resultados.
+```{r}
+data<-read.csv("data/transferability.csv", header = TRUE, stringsAsFactors = T)
+data$niter<-factor(data$niter, levels = c("5", "10", "20", "36", "100"))
+levels(data$algorithm)[levels(data$algorithm) == "pgd"]<-"PGD"
+data$algorithm<-factor(data$algorithm, levels = c("PGD", "APGD", "ACG", "ReACG"))
+data$epsilon<-factor(as.character(data$epsilon), levels = c("4", "8", "16", "32"))
+
+BASIC_MODELS <-c("vgg16", "vgg19", "inception_v3", "resnet50", "mobilenetv2_140", "resnet152")
+ADV_MODELS <-c("bit-reduction", "jpeg", "NRP", "inception_resnet_v2.adv", "random-padding", "inception_v3.adv")
+data$target_model<-factor(as.character(data$target_model), levels = c(BASIC_MODELS, ADV_MODELS))
+```
+
+```{r}
+plot_cols_by_target<-function(df, title) {
+  ggplot(df, aes(algorithm, transferability, color = algorithm, fill = algorithm)) + 
+    geom_col() +
+    labs(color = "Algorithm", fill = "Algorithm") +
+    #ylim(0, 100) +
+    facet_grid(surrogate_model~target_model) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      legend.position = "bottom"
+    )
+}
+```
+
+# Análisis de la transferibilidad
+
+## Respecto al número de iteraciones
+
+```{r}
+data100<-subset(data, niter == "100")
+data100$fill_value <- ifelse(
+  as.character(data100$target_model) == as.character(data100$surrogate_model),
+  NA,
+  data100$transferability
+)
+```
+
+```{r}
+ggplot(data100, aes(x = target_model, y = surrogate_model, fill = fill_value)) +
+  geom_tile() +
+  facet_grid(algorithm ~ epsilon, ) +
+  scale_fill_distiller(palette = "RdBu", direction = 1) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 6),
+    legend.position = "bottom",
+    strip.text.x = element_text(size = 10)
+  ) +
+  labs(
+    fill = "Transferability (%)",
+    x = "Target model", 
+    y = "Surrogate model",
+    title = "Transferability when niter=100"
+  )
+```
+
+```{r}
+dataform<-subset(data, niter != "100")
+dataform$fill_value <- ifelse(
+  as.character(dataform$target_model) == as.character(dataform$surrogate_model),
+  NA,
+  dataform$transferability
+)
+```
+
+```{r}
+ggplot(dataform, aes(x = target_model, y = surrogate_model, fill = fill_value)) +
+  geom_tile() +
+  facet_grid(algorithm ~ epsilon, ) +
+  scale_fill_distiller(palette = "RdBu", direction = 1) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 6),
+    legend.position = "bottom",
+    strip.text.x = element_text(size = 10)
+  ) +
+  labs(
+    fill = "Transferability (%)",
+    x = "Target model", 
+    y = "Surrogate model",
+    title = "Transferability when niter=min(125 * eps, 100 * eps + 4)"
+  )
+```
+
+```{r}
+groups<-split(data, list(data$surrogate_model, data$target_model, data$epsilon, data$algorithm))
+diff<-lapply(groups, function(g) {
+  g1<-g[order(g$niter, decreasing = T),]
+  g1$diff<-g1$transferability[1] - g1$transferability[2]
+  subset(g1, select = -niter)[1,]
+})
+df<-Reduce(rbind, diff)
+```
+
+La diferencia se caclula como
+\[
+t_{n=100} - t_{n=m},
+\]
+donde \(m = \min\{255\epsilon + 4, 125\epsilon\}). Es decir, un valor negativo implica que el caso donde
+se emplean menos iteraciones ha obtenido una mayor transferibilidad. Por otro lado, un valor positivo implica
+que la configuración con 100 iteraciones ha alcanzado una mayor transferibilidad.
+
+```{r}
+ggplot(df, aes(x = target_model, y = surrogate_model, fill = diff)) +
+  geom_tile() +
+  facet_grid(algorithm ~ epsilon, ) +
+  scale_fill_distiller(palette = "RdBu", direction = 1) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 6),
+    legend.position = "bottom",
+    strip.text.x = element_text(size = 8)
+  ) +
+  labs(
+    fill = "Trasferibility difference",
+    x = "Target model", 
+    y = "Surrogate model"
+  )
+```
+
+```{r}
+summary<-aggregate(
+  diff ~ algorithm + epsilon, 
+  data = df, 
+  FUN = function(x) c(
+    min = min(x), 
+    max = max(x), 
+    mean = mean(x),
+    median = median(x), 
+    sd = sd(x)
+  )
+)
+data.frame(
+  algorithm = summary$algorithm,
+  epsilon = summary$epsilon,
+  min = summary$diff[, "min"],
+  max = summary$diff[, "max"],
+  mean = summary$diff[, "mean"],
+  median = summary$diff[, "median"],
+  sd = summary$diff[, "sd"]
+)
+```
+
+## Transferibilidad con respecto al modelo base y al modelo objetivo
+
+
+### Máxima perturbación: 4/255
+
+```{r}
+sub_data<-data[data$epsilon == "4",]
+```
+
+#### Número de iteraciones: 100
+
+```{r}
+sub_data_100<-sub_data[sub_data$niter == "100",]
+```
+
+No se consideran los casos donde el modelo base y el modelo objetivo son el mismo, ya que
+no es un caso representativo de un ataque por caja negra y complica la comparación de los
+resultados.
+
+```{r}
+df<-sub_data_100[sub_data_100$target_model %in% BASIC_MODELS,]
+df<-subset(df, as.character(target_model) != as.character(surrogate_model))
+plot_cols_by_target(df, "eps = 4/255, niter = 100  (basic models)")
+```
+
+```{r}
+df<-sub_data_100[sub_data_100$target_model %in% ADV_MODELS,]
+plot_cols_by_target(df, "eps = 4/255, niter = 100 (robust models)")
+```
+
+#### Número de iteraciones: 5
+
+```{r}
+sub_data_form<-sub_data[sub_data$niter == "5",]
+```
+
+```{r}
+df<-sub_data_form[sub_data_form$target_model %in% BASIC_MODELS,]
+df<-subset(df, as.character(target_model) != as.character(surrogate_model))
+plot_cols_by_target(df, "eps = 4/255, niter = 5 (basic models)")
+```
+
+```{r}
+df<-sub_data_form[sub_data_form$target_model %in% ADV_MODELS,]
+plot_cols_by_target(df, "eps = 4/255, niter = 5 (robust models)")
+```
+
+### Maximum perturbation: 8/255
+
+```{r}
+sub_data<-data[data$epsilon == "8",]
+sub_data
+```
+
+#### Number of iterations: 100
+
+```{r}
+sub_data_100<-sub_data[sub_data$niter == "100",]
+```
+
+```{r}
+df<-sub_data_100[sub_data_100$target_model %in% BASIC_MODELS,]
+df<-subset(df, as.character(target_model) != as.character(surrogate_model))
+plot_cols_by_target(df, "eps = 8/255, niter = 100  (basic models)")
+```
+
+```{r}
+df<-sub_data_100[sub_data_100$target_model %in% ADV_MODELS,]
+plot_cols_by_target(df, "eps = 8/255, niter = 100 (robust models)")
+```
+
+#### Number of iterations: 10
+
+```{r}
+sub_data_form<-sub_data[sub_data$niter == "10",]
+```
+
+```{r}
+df<-sub_data_form[sub_data_form$target_model %in% BASIC_MODELS,]
+df<-subset(df, as.character(target_model) != as.character(surrogate_model))
+plot_cols_by_target(df, "eps = 8/255, niter = 10 (basic models)")
+```
+
+```{r}
+df<-sub_data_form[sub_data_form$target_model %in% ADV_MODELS,]
+plot_cols_by_target(df, "eps = 8/255, niter = 10 (robust models)")
+```
+
+
+### Maximum perturbation: 16/255
+
+```{r}
+sub_data<-data[data$epsilon == "16",]
+```
+
+#### Number of iterations: 100
+
+```{r}
+sub_data_100<-sub_data[sub_data$niter == "100",]
+```
+
+```{r}
+df<-sub_data_100[sub_data_100$target_model %in% BASIC_MODELS,]
+df<-subset(df, as.character(target_model) != as.character(surrogate_model))
+plot_cols_by_target(df, "eps = 16/255, niter = 100  (basic models)")
+```
+
+```{r}
+df<-sub_data_100[sub_data_100$target_model %in% ADV_MODELS,]
+plot_cols_by_target(df, "eps = 16/255, niter = 100 (robust models)")
+```
+
+#### Number of iterations: 20
+
+```{r}
+sub_data_form<-sub_data[sub_data$niter == "20",]
+```
+
+```{r}
+df<-sub_data_form[sub_data_form$target_model %in% BASIC_MODELS,]
+df<-subset(df, as.character(target_model) != as.character(surrogate_model))
+plot_cols_by_target(df, "eps = 16/255, niter = 20 (basic models)")
+```
+
+```{r}
+df<-sub_data_form[sub_data_form$target_model %in% ADV_MODELS,]
+plot_cols_by_target(df, "eps = 16/255, niter = 20 (robust models)")
+```
+
+### Maximum perturbation: 32/255
+
+```{r}
+sub_data<-data[data$epsilon == "32",]
+```
+
+#### Number of iterations: 100
+
+```{r}
+sub_data_100<-sub_data[sub_data$niter == "100",]
+```
+
+```{r}
+df<-sub_data_100[sub_data_100$target_model %in% BASIC_MODELS,]
+df<-subset(df, as.character(target_model) != as.character(surrogate_model))
+plot_cols_by_target(df, "eps = 32/255, niter = 100  (basic models)")
+```
+
+```{r}
+df<-sub_data_100[sub_data_100$target_model %in% ADV_MODELS,]
+plot_cols_by_target(df, "eps = 32/255, niter = 100 (robust models)")
+```
+
+#### Number of iterations: 36
+
+```{r}
+sub_data_form<-sub_data[sub_data$niter == "36",]
+```
+
+```{r}
+df<-sub_data_form[sub_data_form$target_model %in% BASIC_MODELS,]
+df<-subset(df, as.character(target_model) != as.character(surrogate_model))
+plot_cols_by_target(df, "eps = 32/255, niter = 36 (basic models)")
+```
+
+```{r}
+df<-sub_data_form[sub_data_form$target_model %in% ADV_MODELS,]
+plot_cols_by_target(df, "eps = 32/255, niter = 36 (robust models)")
+```
+
+# Análisis de la percepción
+
+Las cuatro métricas elegidas para medir lo apreciables que son las perturbaciones introducidas por los 
+ejemplos adversarios son:
+
+- _Structural Similarity Index Measure_ (SSIM): 
+- _Peak Signal-to-Noise Ratio_ (PSNR): 
+- _Learned Perceptual Image Patch Similarity_ (LPIPS): 
+- _Frèchet Inception Distance_ (FID): 
