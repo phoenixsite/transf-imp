@@ -2,12 +2,12 @@ __pycache__
 .vscode/
 .venv
 results
-data
+data/
 .env
 models
 *.pth
 .ipynb_checkpoints
-results/
+results*/
 *.csv
 
 .Rproj.user

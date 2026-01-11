@@ -14,6 +14,8 @@ import torchvision.transforms.v2 as transforms
 from torchvision.datasets import ImageNet
 from torchvision.datasets.folder import has_file_allowed_extension
 
+from utils.model import ADV_MODELS
+
 THREAT_MODEL = "Linf"
 DATASET_NAME = "imagenet"
 
@@ -101,6 +103,10 @@ class LimitedImageNet(ImageNet):
 
 
 def get_preprocessing(model_name):
+
+    if model_name in ADV_MODELS:
+        model_name = ADV_MODELS[model_name][0]
+
     timm_model_name = f"{model_name}_{DATASET_NAME}_{THREAT_MODEL}"
     if not timm.is_model(timm_model_name):
         raise ValueError(f"{timm_model_name} is not available in the package timm.")

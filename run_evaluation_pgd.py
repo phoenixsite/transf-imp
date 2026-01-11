@@ -30,6 +30,14 @@ from utils.args import positive_number
 from utils.model import get_model
 from utils.io import read_yaml, overwrite_config
 from utils.configuration import get_configurations
+from utils.constants import (
+    DATASET_PATH_PARTS,
+    CLIP_VALUES,
+    PARAM_FILENAME,
+    INDICES_NAME,
+    IMAGES_DIR,
+    SUMMARY_FILENAME
+)
 
 def path(filename):
     """Return an absolute path to a file in the current directory."""
@@ -37,24 +45,6 @@ def path(filename):
 
 logging.config.fileConfig(path("logging.conf"))
 logger = logging.getLogger(__name__)
-
-DATASET_PATH_PARTS = ["data", "imagenet"]
-
-# Minimum and maximum values of the data
-CLIP_VALUES = (0.0, 1.0)
-
-# Name of the file where the execution parameters are stored
-EX_PARAMS_FILE = "run.yaml"
-
-# Name of the file where the indices of the images in the used dataset
-# whose attack failed; i.e. its adversarial example prediction was the 
-# same as the original image.
-INDICES_NAME = "indices.yaml"
-
-# Name of the directory where the adversarial images are stored
-ADV_DIR_NAME = "adversarial_images"
-
-SUMMARY_FILENAME = "summary.csv"
 
 def argparser():
 
@@ -259,7 +249,7 @@ if __name__ == "__main__":
     # but successfully attacked.
     adversarial_inds = np.logical_and(correctly_pred, adversarial_inds2)
 
-    ex_params_path = Path(args.output_dir, EX_PARAMS_FILE)
+    ex_params_path = Path(args.output_dir, PARAM_FILENAME)
 
     logger.info("Writing config into file")
     with open(ex_params_path, "w") as file:
@@ -309,7 +299,7 @@ if __name__ == "__main__":
         writer.writerows(rows)
 
     if args.save_adversarial:
-        adv_images_dir = Path(args.output_dir, ADV_DIR_NAME)
+        adv_images_dir = Path(args.output_dir, IMAGES_DIR)
         adv_images_dir.mkdir()
         
         logger.info(f"Saving generated adversarial images in '{adv_images_dir.resolve()}'")
