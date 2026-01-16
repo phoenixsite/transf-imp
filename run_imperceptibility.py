@@ -20,6 +20,7 @@ from torchmetrics.image import (
     LearnedPerceptualImagePatchSimilarity,
     PeakSignalNoiseRatio,
     StructuralSimilarityIndexMeasure,
+    FrechetInceptionDistance,
 )
 
 from utils.data import get_preprocessing, LimitedImageNet, INITIAL_TRANSFORM
@@ -60,7 +61,8 @@ LPIPS = "lpips"
 PSNR = "psnr"
 FID = "fid"
 
-# Object interfaces of the imperceptability metrics 
+# Object interfaces of the imperceptability metrics . The FID depends on the
+# image size, so it is declared later
 SSIM_METRIC = StructuralSimilarityIndexMeasure(data_range=1.0, reduction="none")
 PSNR_METRIC = PeakSignalNoiseRatio(data_range=1.0, reduction="none", dim=(1, 2, 3))
 LPIPS_ALEX = LearnedPerceptualImagePatchSimilarity(
@@ -72,6 +74,7 @@ LPIPS_VGG = LearnedPerceptualImagePatchSimilarity(
 LPIPS_SQUEEZE = LearnedPerceptualImagePatchSimilarity(
     net_type="squeeze", reduction="none", normalize=True
 )
+FID_METRIC = FrechetInceptionDistance(normalize=True)
 
 # Header of the resulting CSV file
 CSV_ROWS = [
@@ -89,6 +92,7 @@ CSV_ROWS = [
     "lpips_vgg_std",
     "lpips_squeeze_mean",
     "lpips_squeeze_std",
+    "fid",
     "dir",
 ]
 
@@ -103,10 +107,10 @@ def get_argparse():
     parser = argparse.ArgumentParser(
         description=(
             "Calculate similarity metrics of ImageNet modified images." \
-            "The metrics are SSIM\n" \
-            "(Structural Similarity Index Measure), 'PSNR (Peak\n" \
-            "Signal-to-Noise Ratio), LPIPS (Learned Perceptual Image Path\n" \
-            "Similarity) and FIPS (Frèchet Inception Distance)."
+            "The metrics are SSIM" \
+            " (Structural Similarity Index Measure), PSNR (Peak" \
+            " Signal-to-Noise Ratio), LPIPS (Learned Perceptual Image Path" \
+            " Similarity) and FID (Frèchet Inception Distance)."
         ),
         formatter_class=argparse.RawTextHelpFormatter
     )
@@ -163,7 +167,8 @@ def get_argparse():
             "\t12. Standard deviation of LPIPS (VGG)\n" \
             "\t13. Mean of LPIPS (Squeeze)\n" \
             "\t14. Standard deviation of LPIPS (Squeeze)\n" \
-            "\t15. Directory used\n" \
+            "\t15. Frèchet Inception Distance\n" \
+            "\t16. Directory used\n" \
             "It is necessary to specify the metric with the option --metric\n" \
             "in order to calcualte its mean and standard deviation. If not,\n" \
             "a hyphen ('-') written."
@@ -246,6 +251,7 @@ if __name__ == "__main__":
     metrics.append((f"{LPIPS}_alex", LPIPS_ALEX.to(device)))
     metrics.append((f"{LPIPS}_vggg", LPIPS_VGG.to(device)))
     metrics.append((f"{LPIPS}_squeeze", LPIPS_SQUEEZE.to(device)))
+    metrics.append((FID, FID_METRIC.to(device)))
 
     full_original_images = {}
 
@@ -310,7 +316,7 @@ if __name__ == "__main__":
     for model_name in full_original_images:
         for testimagesdir in tqdm(
             full_original_images[model_name][0],
-            desc=f"Using data preprocessed images from {model_name}",
+            desc=f"Using preprocessed images from {model_name}",
             unit="directories",
         ):
             
@@ -379,27 +385,48 @@ if __name__ == "__main__":
             for metric in metrics:
                 new_batch_size = 20 if LPIPS in metric[0] else batch_size
                 measures = []
-                for i in tqdm(
-                    range(0, nimages, new_batch_size),
-                    desc=f"Obtaining {metric[0]}",
-                    unit="batches",
-                    leave=False,
-                ):
-                    mod_batch = modified_images[i : i + new_batch_size].to(device)
-                    orig_batch = original_images[i : i + new_batch_size].to(device)
-                    out = metric[1](mod_batch, orig_batch)
 
+                if metric[0] != FID:
+                    for i in tqdm(
+                        range(0, nimages, new_batch_size),
+                        desc=f"Obtaining {metric[0]}",
+                        unit="batches",
+                        leave=False,
+                    ):
+                        mod_batch = modified_images[i : i + new_batch_size].to(device)
+                        orig_batch = original_images[i : i + new_batch_size].to(device)
+                    
+                        out = metric[1](mod_batch, orig_batch)
+
+                        if out.dim() == 0:
+                            out = out.unsqueeze(0)
+
+                        measures.append(out.cpu())
+
+                        if device == "cuda":
+                            del mod_batch, orig_batch
+                            torch.cuda.empty_cache()
+
+                    measures = torch.cat(measures)
+                    row.extend([measures.mean(dim=0).item(), measures.std(dim=0).item()])
+                else:
+                    for i in tqdm(
+                        range(0, nimages, new_batch_size),
+                        desc=f"Obtaining {metric[0]}",
+                        unit="batches",
+                        leave=False,
+                    ):
+                        mod_batch = modified_images[i : i + new_batch_size].to(device)
+                        orig_batch = original_images[i : i + new_batch_size].to(device)
+                        metric[1].update(orig_batch, real=True)
+                        metric[1].update(mod_batch, real=False)
+                    out = metric[1].compute()
+                    
                     if out.dim() == 0:
                         out = out.unsqueeze(0)
 
-                    measures.append(out.cpu())
+                    row.extend([out.cpu().item()])
 
-                    if device == "cuda":
-                        del mod_batch, orig_batch
-                        torch.cuda.empty_cache()
-
-                measures = torch.cat(measures)
-                row.extend([measures.mean(dim=0).item(), measures.std(dim=0).item()])
             row.append(testimagesdir)
             rows.append(row)
 

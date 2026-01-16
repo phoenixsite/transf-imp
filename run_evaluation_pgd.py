@@ -36,7 +36,7 @@ from utils.constants import (
     PARAM_FILENAME,
     INDICES_NAME,
     IMAGES_DIR,
-    SUMMARY_FILENAME
+    SUMMARY_FILENAME,
 )
 
 def path(filename):

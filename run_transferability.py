@@ -1,5 +1,76 @@
 """
 Test a sample of adversarial examples generated with an attack over a model.
+
+The results are saved in a CSV file containing the following columns:
+
+    - surrogate_model: Name of the model for which the adversarial examples
+    were generated. This value may be the one used to obtain the model from a 
+    Python package (for example, timm).
+
+    - algorithm: Name of the algorithm used to generate the adversarial
+    examples for the surregate_model.
+
+    - eps: Maximum allowed distance between the original sample and the
+    adversarial exmaple according to a specific distance function 
+    (currrently, only the unifrm distance is used).
+
+    - niter: Number of iterations used to generate the adversarial exmaples
+    via the algorithm. If the algorithm is not iterative, then the value is
+    'nan'.
+
+    - target_model: Name of the model that the adversarial examples are tested
+    agains. This value may be the one used to obtain the model from a 
+    Python package (for example, timm).
+
+
+    - time: number of seconds that the execution of all the adversarial examples
+    againt the target model.
+
+    - clean_acc: accuracy of the target_model over the original samples of the
+    adversarial examples used. Specifically, if n is the number of adversarial
+    examples used, x'_i is the i-th adversarial example, x_i is the original
+    sample of x'_i and y_i is the correct class of x_i, then 
+
+        clean_acc = #{x_i for all i=1, ..., n | target_model(x_i) == y_i} / n,
+    
+    where # denotes the number of elements in a set and target_model(x_i) is the
+    class predicted by the target_model for the sample x_i.
+
+    - adv_acc: rate of adversarial examples incorrectly classified by the target
+    model. The complement of this (1-value) is the attack success rate of
+    the transferability attack. The original sample of the adversarial examples 
+    used to obtain this metric must be correctly classified by the target model.
+
+    - dir: relative path to the directory that stores the adversarial images.
+
+    - nsamples: number of adversarial examples provided. This number also means
+    the number of adversarial examples that fool the surrogate
+    model but whose original sample is correctly classified by the surrogate_model
+    (see note 2).
+
+    - surrogate_model_acc: accuracy of the surrogate_model over the adversarial 
+    examples generated for the original dataset (not provided in this program).
+
+    - clean_nexamples: number of original samples of the adversarial examples 
+    correctly classified by the target model.
+
+    - surrogate_model_adv_acc: accuracy of the surrogate_model over the adversarial
+    examples
+
+Note 1: There may be confussion on how the adv_acc is obtained. Instead of using all the
+    adversarial examples provided in the script input to test the target model, the
+    adversarial examples used in the transferability attack must meet a condition:
+    its original sample is correctly classified by the target model. If we used all
+    the adversarial examples, whether or not is correctly classified by the target
+    model, then the attack success rate may be increased not because the adversarial
+    examples are "better" fooling the target model, but because the target model is
+    intially not able to classify the original sample. Then, this can mask the
+results of the transferability attack.
+
+Note 2: The original dataset of samples is 5000. However, we consider 
+    in this experiment only adversarial examples whose orignal sample is correctly
+    classified by the surrogate_model and whose prediction is different from the 
+    correct one.
 """
 
 import os
@@ -34,7 +105,8 @@ from utils.constants import (
     PARAM_PERT1,
     PARAM_PERT2,
     SUMMARY_FILENAME,
-    SURROGATE_MODEL_NAME
+    SURROGATE_MODEL_NAME,
+    NSAMPLES,
 )
 
 def path(filename):
@@ -159,6 +231,7 @@ if __name__ == '__main__':
         
         for datadir in tqdm(args.datadirs, desc=f"Transfering to '{target_model_name}'", unit="dirs"):
 
+            # Check if the required dirs and files exist
             if not datadir.is_dir():
                 logger.error(
                     f"'{datadir}' is not a valid directory."
@@ -180,7 +253,16 @@ if __name__ == '__main__':
                     f"The directory '{images_dir}' is not a valid directory."
                 )
                 continue
+
+            orig_summary_file = Path(datadir, SUMMARY_FILENAME)
+
+            if not orig_summary_file.exists():
+                logger.error(
+                    f"The ifle '{orig_summary_file}' is not present in '{datadir}'."
+                )
+                continue
             
+            # Check if the required parameters exist and get them
             with open(param_file, "r") as f:
                 param_file_yaml = yaml.unsafe_load(f)
 
@@ -221,6 +303,25 @@ if __name__ == '__main__':
 
             niter = param_file_yaml[PARAM_NITER]
 
+            with open(orig_summary_file, "r") as f:
+                reader = csv.DictReader(f)
+                # It is expected that there are just two rows: the header
+                # and the results during the generation of adversarial examples
+                rows = list(reader)
+                if len(rows) == 0:
+                    logger.error(
+                        f"The file '{SUMMARY_FILENAME}' in '{datadir}' does not contain any data."
+                    )
+                    continue
+
+                clean_acc = float(rows[0]["clean_acc"])
+                adv_acc = float(rows[0]["adv_acc"])
+
+            
+            surrogate_model_acc = clean_acc
+            surrogate_model_adv_acc = adv_acc
+
+            # Check if the result directory exists
             name_dir = f"{target_model_name}_{datadir.name}"
             outputdir = Path(args.rootoutputdir, name_dir)
 
@@ -274,9 +375,9 @@ if __name__ == '__main__':
 
             # Set to true the indices of the correctly classified images
             correctly_pred = np.argmax(clean_predictions, axis=1) == np.argmax(copy_real_y, axis=1)
-
+            clean_nexamples = np.sum(correctly_pred)
             torch.cuda.empty_cache()
-            clean_accuracy = np.sum(correctly_pred) / len(copy_real_y)
+            clean_accuracy = clean_nexamples / len(copy_real_y)
             logger.info(f"Accuracy over clean examples (considering only the original images of the adversarial examples loaded): {clean_accuracy:.4f}")
             
             # Get those adversarial images whose original image is correctly
@@ -331,6 +432,10 @@ if __name__ == '__main__':
                     "clean_acc",
                     "adv_acc",
                     "dir",
+                    "nsamples",
+                    "surrogate_model_acc",
+                    "clean_nexamples",
+                    "surrogate_model_adv_acc",
                 ],
                 [
                     surrogate_model,
@@ -342,6 +447,10 @@ if __name__ == '__main__':
                     clean_accuracy,
                     adv_accuracy,
                     datadir,
+                    nimages,
+                    surrogate_model_acc,
+                    clean_nexamples,
+                    surrogate_model_adv_acc,
                 ],
             ]
 

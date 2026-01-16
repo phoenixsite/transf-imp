@@ -31,3 +31,7 @@ CLIP_VALUES = (0.0, 1.0)
 INDICES_NAME = "indices.yaml"
 
 SUMMARY_FILENAME = "summary.csv"
+
+# Number of samples used during the generation of adversarial examples
+# Currently, this is limited to the one set in Robustbench
+NSAMPLES = 5000
